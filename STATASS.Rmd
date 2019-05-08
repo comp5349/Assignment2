@@ -1,0 +1,234 @@
+---
+title: "STAT5003 Assignment1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Initialize
+```{r}
+library(ggplot2)
+theme_update(plot.title = element_text(hjust = 0.5))
+
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+## Exploratory data analysis
+### Clean Data
+#### DonorInfo
+1. Load DonorInfo and drop columns
+
+```{r}
+DonorInfo <- read.csv("DonorInformation.csv", header = TRUE, sep = ",", encoding = "UTF-8")
+DonorInfo.clean <- DonorInfo[c('donor_id', 'age', 'sex', 'apo_e4_allele', 'education_years', 'age_at_first_tbi', 'num_tbi_w_loc', 'act_demented')]
+
+dim(DonorInfo.clean)
+summary(DonorInfo.clean)
+
+ggplot()+geom_histogram(data=data.frame(x=DonorInfo$age_at_first_tbi), bins = 20, aes(x)) + labs(title="Histogram of Age at first TBI", x ="Age at first TBI", y = "Population")
+```
+
+2. Deal with N/A and categorical features
+age, sex, apo_e4_allele, education_years, age_at_first_tbi, longest_loc_duration, num_tbi_w_loc
+
+Categorical features:
+Age: Linear from ages 72-89; binned at 90-94, 95-99, and 100+.
+Sex: Gender
+apo_e4_allele: Yes - at least one ApoE4 allele; No - no ApoE4 allele present
+longest_loc_duration: Ordinal score of length of loss of consciousness: 0 (none or unknown), 1 (a few sec or <), 2 (min or <), 3 (1-2 min), 4 (3-5 min), 5 (6-9 min), 6 (10 min-1 hr), and 7 (> 1 hr).
+
+Numerical features:
+education_years: Number of years of education completed
+age_at_first_tbi: Age at which first TBI with loss of consciousness was reported.
+num_tbi_w_loc: Number of recorded TBI, ranging from 0 (control) to 3.
+
+```{r}
+#clean age
+summary(DonorInfo$age)
+age <- as.character(DonorInfo$age) 
+age[DonorInfo$age=='90-94'] <- 92
+age[DonorInfo$age=='95-99'] <- 97
+age[DonorInfo$age=='100+'] <- 100
+age <- as.numeric(age)
+
+ggplot()+geom_histogram(data=data.frame(x=age), bins = 20, aes(x)) + labs(title="Histogram of age", x ="Age", y = "Population")
+summary(age)
+DonorInfo.clean$age <- age
+
+#clean apo_e4_allele
+summary(DonorInfo$apo_e4_allele)
+apo_e4_allele <- as.numeric(DonorInfo$apo_e4_allele)-1
+#0->N 1->N/A 2->Y
+#all N/A to N
+apo_e4_allele[apo_e4_allele==1] <- 0
+apo_e4_allele[apo_e4_allele==2] <- 1
+DonorInfo.clean$apo_e4_allele <- apo_e4_allele
+
+DonorInfo.clean$sex <- as.numeric(DonorInfo$sex)-1
+DonorInfo.clean$act_demented <- as.numeric(DonorInfo$act_demented)-1
+
+```
+
+3. Check cleaned data
+
+```{r}
+summary(DonorInfo.clean)
+```
+
+#### ProteinInfo
+1. Load ProteinInfo and remove redundant columns
+
+```{r}
+ProteinInfo.raw <- read.csv("ProteinAndPathologyQuantifications.csv", header = TRUE, sep = ",", encoding = "UTF-8")
+head(ProteinInfo.raw)
+ProteinInfo <- ProteinInfo.raw[,c(-2,-4)]
+head(ProteinInfo)
+```
+
+```{r}
+colSums(is.na(ProteinInfo))
+
+p1 <-ggplot()+geom_density(data=data.frame(x=ProteinInfo$isoprostane_pg_per_mg), na.rm = T, aes(x)) + labs(title="Density of isoprostane_pg_per_mg", x ="isoprostane_pg_per_mg", y = "Density")
+p2 <-ggplot()+geom_density(data=data.frame(x=ProteinInfo$ihc_tau2_ffpe), na.rm = T, aes(x)) + labs(title="Density of ihc_tau2_ffpe", x ="ihc_tau2_ffpe", y = "Density")
+p3 <-ggplot()+geom_density(data=data.frame(x=ProteinInfo$ihc_at8_ffpe), na.rm = T, aes(x)) + labs(title="Density of ihc_at8_ffpe", x ="ihc_at8_ffpe", y = "Density")
+
+multiplot(p1, p2, p3, cols=1)
+
+#replace na with column mean
+for (i in seq(ncol(ProteinInfo))) {
+  ind <- is.na(ProteinInfo[,i])
+  ProteinInfo[ind, i] <- median(ProteinInfo[,i], na.rm = T)
+}
+
+#remove the column with 239 N/A
+ProteinInfo1 <- ProteinInfo[,-which(colnames(ProteinInfo)=="isoprostane_pg_per_mg")]
+
+colSums(is.na(ProteinInfo1))
+```
+
+#merge ProteinInfo with DonorInfo
+
+```{r}
+data1 <- merge(x = ProteinInfo1, y = DonorInfo.clean, by = "donor_id", all = TRUE)
+head(data1)
+```
+
+#### FPKM with column sample information
+1. read csv
+
+```{r}
+colsamp <- read.csv("columns-samples.csv", header = TRUE, sep = ",", encoding = "UTF-8")
+dim(colsamp)
+head(colsamp)
+fpkm <- read.csv("fpkm_table_unnormalized.csv", header = TRUE, sep = ",", encoding = "UTF-8")
+dim(fpkm)
+fpkm[1:5,1:10]
+
+#summary(colsamp[colsamp$structure_name=='temporal neocortex',]$structure_color)
+```
+
+2. remove redundant ids in colsamp
+
+```{r}
+colsamp <- colsamp[,c(1,2,8)]
+head(colsamp)
+```
+
+3. merge colsamp with data1
+
+```{r}
+data2 <- merge(x = colsamp, y = data1, by = c("donor_id", "structure_id"))
+dim(data2)
+head(data2)
+colnames(data2)
+
+data2.new <- data2[order(data2[,'rnaseq_profile_id']),]
+head(data2.new)
+
+```
+
+4. transpose fpkm
+
+```{r}
+fpkm1 <- as.data.frame(t(fpkm))[-1,]
+colnames(fpkm1)<-fpkm[,1]
+fpkm1[1:5, 1:10]
+```
+
+5. combine fpkm1 with data2.new to produce data.final
+
+```{r}
+data3 <- cbind(data2.new, fpkm1)
+rownames(data3) <- rownames(fpkm1)
+data3[1:5, 1:10]
+
+data.final <- cbind(rnaseq_profile_id = data3[,3],data3[,-3])
+dim(data.final)
+data.final[1:5, 1:10]
+
+#remove ids
+dataF <- data.final[,-(1:3)]
+
+dataF[1:5, 1:10]
+
+```
+
+```{r}
+
+```
+
+```{r}
+#plot(density(rowSums(fpkm1==0)))
+#plot(density(colSums(fpkm1==0)))
+#plot((rowSums(fpkm1==0)))
+#plot(sort(colSums(fpkm1==0)))
+#((rowSums(fpkm1==0)))
+#((colSums(fpkm1==0)))
+```
+
+
